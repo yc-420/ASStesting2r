@@ -22,7 +22,6 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_PATH = os.path.join(BASE_DIR, "garments_worker_productivity.csv")
 RF_MODEL_PATH = os.path.join(BASE_DIR, "rf_model.joblib")
 
-# Fixed category order so single/batch prediction always matches training features
 QUARTER_CATS = ["Quarter1", "Quarter2", "Quarter3", "Quarter4", "Quarter5"]
 DEPARTMENT_CATS = ["finishing", "sewing"]
 DAY_CATS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Saturday", "Sunday"]
@@ -116,7 +115,6 @@ def train_and_evaluate_models():
         "Linear Regression": LinearRegression(),
     }
 
-    # Baseline + linear
     for model_name, model in models.items():
         model.fit(Xtrain, ytrain)
         pred = model.predict(Xtest)
@@ -138,7 +136,6 @@ def train_and_evaluate_models():
         predictions[model_name] = pred
         best_models[model_name] = model
 
-    # Ridge
     ridge_grid = GridSearchCV(
         Ridge(),
         {"alpha": [0.01, 0.1, 1, 10, 100]},
@@ -166,7 +163,6 @@ def train_and_evaluate_models():
     predictions["Ridge Regression"] = pred_ridge
     best_models["Ridge Regression"] = best_ridge
 
-    # Decision Tree
     dt_grid = GridSearchCV(
         DecisionTreeRegressor(random_state=42),
         {
@@ -198,7 +194,6 @@ def train_and_evaluate_models():
     predictions["Decision Tree"] = pred_dt
     best_models["Decision Tree"] = best_dt
 
-    # Random Forest
     best_rf = None
     if os.path.exists(RF_MODEL_PATH):
         try:
@@ -281,7 +276,17 @@ def prepare_prediction_input(input_df: pd.DataFrame, feature_cols: List[str]) ->
     return df
 
 
-# Load data + models
+def get_prediction_status(gap: float):
+    if gap >= 0.05:
+        return "Likely to exceed target", "success"
+    elif gap >= 0:
+        return "Likely to meet target", "success"
+    elif gap >= -0.05:
+        return "Slightly below target", "warning"
+    else:
+        return "Significantly below target", "error"
+
+
 raw_df, original_missing_wip = load_raw_data()
 model_bundle = train_and_evaluate_models()
 results_df = model_bundle["results_df"]
@@ -289,7 +294,6 @@ feature_cols = model_bundle["feature_columns"]
 best_models = model_bundle["best_models"]
 best_model_row = results_df.sort_values("RMSE").iloc[0]
 
-# Header
 st.title("Garment Worker Productivity Dashboard")
 st.caption(
     "BMDS2003 Data Science Project — EDA, model comparison, single prediction, and batch prediction"
@@ -320,13 +324,13 @@ if menu == "Overview":
     st.subheader("Business Objective")
     st.write(
         "This project predicts actual productivity of garment factory teams so that production managers "
-        "can anticipate underperformance, adjust staffing or overtime, and improve planning decisions."
+        "can estimate likely performance, detect possible underachievement, and improve workforce or production planning decisions."
     )
 
     st.subheader("Why this prototype matters")
     st.info(
-        "The app supports three tasks: understanding the dataset, comparing machine learning models, "
-        "and generating productivity predictions for single records or batch files."
+        "This dashboard helps users understand the dataset, compare multiple machine learning models, "
+        "and generate productivity predictions for both single and batch records."
     )
 
     st.subheader("Dataset Preview")
@@ -350,18 +354,18 @@ elif menu == "Data Exploration":
     eda_df = raw_df.copy()
 
     with st.expander("Filters", expanded=True):
-        colf1, colf2, colf3 = st.columns(3)
-        with colf1:
+        f1, f2, f3 = st.columns(3)
+        with f1:
             dept_filter = st.selectbox(
                 "Department",
                 ["All"] + sorted(eda_df["department"].dropna().unique().tolist()),
             )
-        with colf2:
+        with f2:
             quarter_filter = st.selectbox(
                 "Quarter",
                 ["All"] + sorted(eda_df["quarter"].dropna().unique().tolist()),
             )
-        with colf3:
+        with f3:
             day_filter = st.selectbox(
                 "Day",
                 ["All"] + DAY_CATS,
@@ -384,21 +388,37 @@ elif menu == "Data Exploration":
     m2.metric("Average Productivity", f"{filtered_df['actual_productivity'].mean():.3f}")
     m3.metric("Average Target Productivity", f"{filtered_df['targeted_productivity'].mean():.3f}")
 
-    col1, col2 = st.columns(2)
+    st.subheader("1. Distribution of the Target Variable")
+    c1, c2 = st.columns(2)
 
-    with col1:
+    with c1:
         fig, ax = plt.subplots(figsize=(8, 4))
         sns.histplot(filtered_df["actual_productivity"], bins=30, kde=True, ax=ax)
         ax.set_title("Distribution of Actual Productivity")
         ax.set_xlabel("Actual Productivity")
-        ax.set_ylabel("Count")
+        ax.set_ylabel("Frequency")
         st.pyplot(fig)
         st.caption(
-            "Interpretation: This chart shows whether productivity values are concentrated in a narrow range or widely spread. "
-            "A wide spread suggests productivity is influenced by multiple operational factors."
+            "Interpretation: This histogram shows the overall distribution of actual productivity. "
+            "Most observations are concentrated around the middle to higher productivity range, "
+            "indicating that many teams achieve moderate to strong performance."
         )
 
-    with col2:
+    with c2:
+        fig, ax = plt.subplots(figsize=(8, 4))
+        sns.boxplot(x=filtered_df["actual_productivity"], ax=ax)
+        ax.set_title("Boxplot of Actual Productivity")
+        ax.set_xlabel("Actual Productivity")
+        st.pyplot(fig)
+        st.caption(
+            "Interpretation: This boxplot summarizes the spread of actual productivity and highlights outliers. "
+            "It helps identify whether unusually low or high productivity values exist in the dataset."
+        )
+
+    st.subheader("2. Relationship with Key Numeric Variables")
+    c3, c4 = st.columns(2)
+
+    with c3:
         fig, ax = plt.subplots(figsize=(8, 4))
         sns.scatterplot(
             x="targeted_productivity",
@@ -407,17 +427,57 @@ elif menu == "Data Exploration":
             alpha=0.65,
             ax=ax,
         )
-        ax.set_title("Targeted vs Actual Productivity")
+        ax.set_title("Targeted Productivity vs Actual Productivity")
         ax.set_xlabel("Targeted Productivity")
         ax.set_ylabel("Actual Productivity")
         st.pyplot(fig)
         st.caption(
-            "Interpretation: An upward pattern suggests teams with higher targets also tend to achieve higher productivity. "
-            "However, the spread around the points shows that target alone cannot fully explain performance."
+            "Interpretation: This scatter plot shows the relationship between targeted productivity and actual productivity. "
+            "A general upward tendency suggests that higher targets are often associated with higher actual output, "
+            "although other operational factors still influence performance."
         )
 
-    col3, col4 = st.columns(2)
-    with col3:
+    with c4:
+        fig, ax = plt.subplots(figsize=(8, 4))
+        sns.scatterplot(
+            x="over_time",
+            y="actual_productivity",
+            data=filtered_df,
+            alpha=0.65,
+            ax=ax,
+        )
+        ax.set_title("Over Time vs Actual Productivity")
+        ax.set_xlabel("Over Time")
+        ax.set_ylabel("Actual Productivity")
+        st.pyplot(fig)
+        st.caption(
+            "Interpretation: This chart illustrates how overtime relates to actual productivity. "
+            "It helps evaluate whether additional working time improves productivity consistently "
+            "or whether excessive overtime may produce weaker returns."
+        )
+
+    c5, c6 = st.columns(2)
+
+    with c5:
+        fig, ax = plt.subplots(figsize=(8, 4))
+        sns.scatterplot(
+            x="no_of_workers",
+            y="actual_productivity",
+            data=filtered_df,
+            alpha=0.65,
+            ax=ax,
+        )
+        ax.set_title("Number of Workers vs Actual Productivity")
+        ax.set_xlabel("Number of Workers")
+        ax.set_ylabel("Actual Productivity")
+        st.pyplot(fig)
+        st.caption(
+            "Interpretation: This plot examines the relationship between team size and actual productivity. "
+            "The clustered pattern suggests that increasing the number of workers does not always guarantee higher productivity, "
+            "possibly due to coordination challenges or diminishing returns."
+        )
+
+    with c6:
         fig, ax = plt.subplots(figsize=(8, 4))
         sns.boxplot(x="department", y="actual_productivity", data=filtered_df, ax=ax)
         ax.set_title("Actual Productivity by Department")
@@ -425,11 +485,14 @@ elif menu == "Data Exploration":
         ax.set_ylabel("Actual Productivity")
         st.pyplot(fig)
         st.caption(
-            "Interpretation: Compare the median and spread for sewing and finishing. A higher median suggests that department "
-            "typically operates at a stronger productivity level."
+            "Interpretation: This boxplot compares actual productivity across departments. "
+            "Differences between departments may reflect variation in workflow, task type, or production efficiency."
         )
 
-    with col4:
+    st.subheader("3. Categorical and Structural Insight")
+    c7, c8 = st.columns(2)
+
+    with c7:
         fig, ax = plt.subplots(figsize=(8, 4))
         sns.boxplot(x="quarter", y="actual_productivity", data=filtered_df, ax=ax)
         ax.set_title("Actual Productivity by Quarter")
@@ -437,56 +500,32 @@ elif menu == "Data Exploration":
         ax.set_ylabel("Actual Productivity")
         st.pyplot(fig)
         st.caption(
-            "Interpretation: If some quarters show lower medians or wider spread, productivity may vary by production phase, "
-            "workload, or seasonality."
+            "Interpretation: This chart compares productivity across quarters. "
+            "It helps identify whether productivity differs by production period and whether time-based operational factors may matter."
         )
 
-    col5, col6 = st.columns(2)
-    with col5:
-        fig, ax = plt.subplots(figsize=(8, 4))
-        sns.scatterplot(
-            x="idle_time",
-            y="actual_productivity",
-            data=filtered_df,
-            alpha=0.65,
-            ax=ax,
-        )
-        ax.set_title("Idle Time vs Actual Productivity")
-        ax.set_xlabel("Idle Time")
-        ax.set_ylabel("Actual Productivity")
+    with c8:
+        fig, ax = plt.subplots(figsize=(10, 8))
+        numeric_df = filtered_df.select_dtypes(include=[np.number])
+        sns.heatmap(numeric_df.corr(), annot=True, cmap="coolwarm", fmt=".2f", ax=ax)
+        ax.set_title("Correlation Heatmap")
         st.pyplot(fig)
         st.caption(
-            "Interpretation: If productivity tends to drop as idle time increases, this suggests downtime is harmful to output efficiency."
+            "Interpretation: The correlation heatmap shows the strength and direction of relationships among numerical variables. "
+            "It supports feature selection and helps identify variables that are more strongly related to actual productivity."
         )
 
-    with col6:
-        target_corr = (
-            filtered_df.select_dtypes(include=[np.number])
-            .corr()["actual_productivity"]
-            .drop("actual_productivity")
-            .sort_values()
-        )
-        fig, ax = plt.subplots(figsize=(8, 4))
-        target_corr.plot(kind="barh", ax=ax)
-        ax.set_title("Correlation with Actual Productivity")
-        ax.set_xlabel("Correlation Coefficient")
-        ax.set_ylabel("Feature")
-        st.pyplot(fig)
-        st.caption(
-            "Interpretation: Positive bars indicate features associated with higher productivity, while negative bars indicate the opposite. "
-            "Correlation does not prove causation, but it helps identify promising predictors."
-        )
+    team_avg = filtered_df.groupby("team")["actual_productivity"].mean().sort_values()
 
-    team_avg = filtered_df.groupby("team")["actual_productivity"].mean().sort_values(ascending=False)
-    fig, ax = plt.subplots(figsize=(10, 4))
+    fig, ax = plt.subplots(figsize=(10, 5))
     team_avg.plot(kind="bar", ax=ax)
     ax.set_title("Average Actual Productivity by Team")
     ax.set_xlabel("Team")
     ax.set_ylabel("Average Actual Productivity")
     st.pyplot(fig)
     st.caption(
-        "Interpretation: This chart highlights which teams consistently perform better or worse on average. "
-        "Managers can use this to identify best practices or teams that may need intervention."
+        "Interpretation: This bar chart compares the average actual productivity of each team. "
+        "It highlights performance differences across teams and may support benchmarking or management review."
     )
 
 elif menu == "Model Performance":
@@ -498,8 +537,7 @@ elif menu == "Model Performance":
     )
 
     st.info(
-        "All models are shown together here. This is the correct place to compare every model because "
-        "the rubric expects model comparison, evaluation, and discussion."
+        "All models are compared here because this is the most appropriate section for benchmarking and evaluation."
     )
 
     display_df = results_df.copy()
@@ -517,7 +555,8 @@ elif menu == "Model Performance":
         ax.tick_params(axis="x", rotation=20)
         st.pyplot(fig)
         st.caption(
-            "Interpretation: RMSE measures average prediction error magnitude. Lower RMSE means the model makes predictions closer to the true productivity values."
+            "Interpretation: Lower RMSE indicates smaller prediction error. "
+            "Therefore, models with lower RMSE provide more accurate productivity predictions."
         )
 
     with c2:
@@ -529,7 +568,8 @@ elif menu == "Model Performance":
         ax.tick_params(axis="x", rotation=20)
         st.pyplot(fig)
         st.caption(
-            "Interpretation: R² shows how much variance in productivity is explained by the model. Higher R² indicates stronger explanatory power."
+            "Interpretation: Higher R² indicates that the model explains more variation in actual productivity. "
+            "This helps assess overall goodness of fit."
         )
 
     rf_model = best_models["Random Forest"]
@@ -546,7 +586,8 @@ elif menu == "Model Performance":
         ax.set_ylabel("Feature")
         st.pyplot(fig)
         st.caption(
-            "Interpretation: Features with higher importance contribute more to Random Forest predictions. These are the variables most influential for productivity forecasting."
+            "Interpretation: Features with higher importance contribute more strongly to Random Forest predictions. "
+            "These variables are most influential in productivity forecasting."
         )
 
     selected_model = st.selectbox(
@@ -570,7 +611,8 @@ elif menu == "Model Performance":
         ax.set_title(f"Actual vs Predicted - {selected_model}")
         st.pyplot(fig)
         st.caption(
-            "Interpretation: Points closer to the red diagonal line indicate more accurate predictions. Large distance from the line indicates higher prediction error."
+            "Interpretation: Points closer to the diagonal line indicate more accurate predictions. "
+            "A large distance from the line indicates higher prediction error."
         )
 
     with d2:
@@ -583,20 +625,15 @@ elif menu == "Model Performance":
         ax.set_title(f"Residual Plot - {selected_model}")
         st.pyplot(fig)
         st.caption(
-            "Interpretation: A good model shows residuals randomly scattered around zero. Strong patterns suggest the model is still missing structure in the data."
-        )
-
-    with st.expander("Suggested discussion points for report / presentation"):
-        st.markdown(
-            "- Explain why Random Forest captures non-linear relationships better than linear models.\n"
-            "- Compare train/test performance with cross-validation to show model robustness.\n"
-            "- State one or two limitations, such as moderate R², missing operational variables, or limited generalisation to unseen factory settings.\n"
-            "- Mention that the baseline model is included for fair benchmarking."
+            "Interpretation: A well-fitted model shows residuals randomly scattered around zero. "
+            "Strong visible patterns suggest that the model may still miss some structure in the data."
         )
 
 elif menu == "Single Prediction":
     st.header("Single Prediction")
     st.write("Enter production information to estimate actual productivity.")
+
+    submitted = False
 
     left_col, right_col = st.columns([1.15, 0.85])
 
@@ -625,12 +662,13 @@ elif menu == "Single Prediction":
                 ["Linear Regression", "Ridge Regression", "Decision Tree", "Random Forest"],
                 index=3,
             )
-            submitted = st.form_submit_button("Predict")
+            submitted = st.form_submit_button("Generate Prediction")
 
     with right_col:
-        st.subheader("Prediction Output")
-        st.info(
-            "Teacher-friendly layout: selection inputs are on the left, while the prediction result appears on the right."
+        st.subheader("Prediction Result")
+        st.caption(
+            "The input selections are shown on the left, while the prediction output is shown on the right "
+            "to make the interface easier to explain during presentation."
         )
 
         if submitted:
@@ -654,18 +692,49 @@ elif menu == "Single Prediction":
             model = best_models[model_choice]
             pred = float(model.predict(pred_input)[0])
             gap = pred - targeted_productivity
+            status_text, status_type = get_prediction_status(gap)
 
-            k1, k2, k3 = st.columns(3)
-            k1.metric("Target", f"{targeted_productivity:.3f}")
-            k2.metric("Predicted", f"{pred:.3f}")
-            k3.metric("Gap", f"{gap:.3f}")
+            summary_df = pd.DataFrame({
+                "Metric": ["Selected Model", "Target Productivity", "Predicted Productivity", "Gap to Target"],
+                "Value": [
+                    model_choice,
+                    f"{targeted_productivity:.3f}",
+                    f"{pred:.3f}",
+                    f"{gap:.3f}",
+                ],
+            })
+            st.dataframe(summary_df, use_container_width=True, hide_index=True)
 
-            if pred >= targeted_productivity:
-                st.success("Status: On Track / Overachievement")
-                st.write("This production setup is likely to meet or exceed the target.")
+            if status_type == "success":
+                st.success(f"Status: {status_text}")
+            elif status_type == "warning":
+                st.warning(f"Status: {status_text}")
             else:
-                st.warning("Status: Under Target")
-                st.write("This production setup may struggle to meet the target under current conditions.")
+                st.error(f"Status: {status_text}")
+
+            if gap >= 0:
+                st.markdown(
+                    "**Interpretation:** Based on the selected production conditions, "
+                    "the team is likely to meet or exceed the target productivity."
+                )
+                st.markdown(
+                    "**Managerial implication:** Current operating conditions appear sufficient, "
+                    "although managers should still monitor consistency and operational stability."
+                )
+            else:
+                st.markdown(
+                    "**Interpretation:** Based on the selected production conditions, "
+                    "the team may fall below the target productivity."
+                )
+                st.markdown(
+                    "**Managerial implication:** Managers may need to review staffing efficiency, workload balance, "
+                    "or other production conditions to improve expected performance."
+                )
+
+            st.info(
+                "This prediction should be used as decision support rather than a guaranteed outcome, "
+                "because actual productivity can still be affected by factors not included in the dataset."
+            )
 
             all_preds = {}
             for model_name in ["Linear Regression", "Ridge Regression", "Decision Tree", "Random Forest"]:
@@ -677,18 +746,15 @@ elif menu == "Single Prediction":
             }).sort_values("Predicted Productivity", ascending=False)
             compare_df["Predicted Productivity"] = compare_df["Predicted Productivity"].round(4)
 
-            st.subheader("Model Comparison for This Input")
-            st.dataframe(compare_df, use_container_width=True)
+            st.subheader("All Model Predictions for This Input")
+            st.dataframe(compare_df, use_container_width=True, hide_index=True)
             st.caption(
-                "Recommendation: keep one primary prediction result for clarity, but show all model predictions in a small comparison table like this. "
-                "That demonstrates deeper analysis without making the interface confusing."
+                "This table compares predictions from all trained models for the same input record. "
+                "It supports deeper analysis without making the main result panel confusing."
             )
 
-            st.subheader("Input Record")
-            st.dataframe(pd.DataFrame([raw]), use_container_width=True)
-
         else:
-            st.write("Submit the form to generate a prediction.")
+            st.write("Submit the form to generate a prediction result.")
 
 elif menu == "Batch Prediction":
     st.header("Batch Prediction")
@@ -758,7 +824,8 @@ elif menu == "Batch Prediction":
             st.subheader("Prediction Results")
             st.dataframe(batch_df.head(20), use_container_width=True)
             st.caption(
-                "This batch module uses the same feature mapping as the training stage, so category encoding remains consistent for uploaded files."
+                "This batch module uses the same feature mapping as the training stage, "
+                "so category encoding remains consistent for uploaded files."
             )
 
             st.download_button(
