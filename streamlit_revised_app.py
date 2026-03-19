@@ -560,6 +560,7 @@ elif menu == "Model Performance":
     for col in ["MAE", "RMSE", "R2", "CV_RMSE", "CV_R2"]:
         display_df[col] = display_df[col].round(4)
     st.dataframe(display_df, use_container_width=True)
+    st.caption("Cross-validation results (5-fold) are included to provide a more reliable evaluation of model performance.")
 
     c1, c2 = st.columns(2)
     with c1:
