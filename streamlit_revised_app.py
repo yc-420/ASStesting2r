@@ -15,43 +15,44 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import GridSearchCV, cross_val_score, train_test_split
 from sklearn.tree import DecisionTreeRegressor
 
-warnings.filterwarnings("ignore") #ignore
+warnings.filterwarnings("ignore") #igonore warning
 sns.set_style("whitegrid")
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__)) #read path
 DATA_PATH = os.path.join(BASE_DIR, "garments_worker_productivity.csv")
 RF_MODEL_PATH = os.path.join(BASE_DIR, "rf_model.joblib")
 
-QUARTER_CATS = ["Quarter1", "Quarter2", "Quarter3", "Quarter4", "Quarter5"]
+QUARTER_CATS = ["Quarter1", "Quarter2", "Quarter3", "Quarter4", "Quarter5"] #know variable categories & sequence
 DEPARTMENT_CATS = ["finishing", "sewing"]
 DAY_CATS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Saturday", "Sunday"]
 
-st.set_page_config(page_title="Garment Worker Productivity Dashboard", layout="wide")
+st.set_page_config(page_title="Garment Worker Productivity Dashboard", layout="wide") #set configuration
 
 
 def evaluate_model(y_true, y_pred):
-    mae = mean_absolute_error(y_true, y_pred)
-    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-    r2 = r2_score(y_true, y_pred)
+    mae = mean_absolute_error(y_true, y_pred) #Formula: (actual-prediction)
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred)) #square. Put punishment 
+    r2 = r2_score(y_true, y_pred) #variable affection
     return mae, rmse, r2
 
 
-@st.cache_data
+    #Store the result of data loading
+@st.cache_data 
 def load_raw_data():
     original_df = pd.read_csv(DATA_PATH)
     original_missing_wip = int(original_df["wip"].isna().sum())
 
-    df = original_df.copy()
-    df["department"] = (
-        df["department"]
-        .astype(str)
-        .str.strip()
-        .str.lower()
+    #Data Preparation 
+    df = original_df.copy()  
+    df["department"] = (df["department"]
+        .astype(str) #String
+        .str.strip() #Remove Space 
+        .str.lower() #lowercase 
         .replace({"sweing": "sewing"})
     )
-    df["date"] = pd.to_datetime(df["date"], errors="coerce")
-    df["day"] = df["date"].dt.day_name()
-    df["wip"] = df["wip"].fillna(0)
+    df["date"] = pd.to_datetime(df["date"], errors="coerce") 
+    df["day"] = df["date"].dt.day_name() ##Date connect with day
+    df["wip"] = df["wip"].fillna(0) #Missing WIP values are filled with 0, assuming no work in progress was recorded.
 
     return df, original_missing_wip
 
@@ -59,7 +60,7 @@ def load_raw_data():
 @st.cache_data
 def build_model_dataframe():
     df, _ = load_raw_data()
-    model_df = df.copy()
+    model_df = df.copy() #A copy of the original dataset is created to avoid modifying the raw data directly
 
     model_df["quarter"] = pd.Categorical(model_df["quarter"], categories=QUARTER_CATS)
     model_df["department"] = pd.Categorical(model_df["department"], categories=DEPARTMENT_CATS)
