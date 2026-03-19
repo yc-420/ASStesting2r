@@ -351,7 +351,12 @@ if menu == "Overview":
 
 elif menu == "Data Exploration":
     st.header("Data Exploration")
-
+    
+    st.info(
+        "Some records have productivity values above 1, indicating unusually high performance. "
+        "These were retained to preserve real-world variability."
+    )
+    
     eda_df = raw_df.copy()
 
     with st.expander("Filters", expanded=True):
