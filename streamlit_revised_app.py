@@ -389,16 +389,16 @@ elif menu == "Data Exploration":
         st.warning("No data available for the selected filters.")
         st.stop()
     
+    
+    m1, m2, m3, m4 = st.columns(4)
+    
     Q1 = filtered_df["actual_productivity"].quantile(0.25)
     Q3 = filtered_df["actual_productivity"].quantile(0.75)
     IQR = Q3 - Q1
-
     pos = np.where(
     (filtered_df["actual_productivity"] < (Q1 - 1.5 * IQR)) |
     (filtered_df["actual_productivity"] > (Q3 + 1.5 * IQR))
     )
-    
-    m1, m2, m3 = st.columns(3)
     m1.metric("Filtered Records", len(filtered_df))
     m2.metric("Average Productivity", f"{filtered_df['actual_productivity'].mean():.3f}")
     m3.metric("Average Target Productivity", f"{filtered_df['targeted_productivity'].mean():.3f}")
