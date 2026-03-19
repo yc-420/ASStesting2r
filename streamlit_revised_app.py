@@ -393,6 +393,7 @@ elif menu == "Data Exploration":
     m1.metric("Filtered Records", len(filtered_df))
     m2.metric("Average Productivity", f"{filtered_df['actual_productivity'].mean():.3f}")
     m3.metric("Average Target Productivity", f"{filtered_df['targeted_productivity'].mean():.3f}")
+    m4.metric("Number of Outliers", len(pos[0]))
 
     st.subheader("1. Distribution of the Target Variable")
     c1, c2 = st.columns(2)
