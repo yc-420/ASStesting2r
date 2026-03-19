@@ -15,7 +15,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import GridSearchCV, cross_val_score, train_test_split
 from sklearn.tree import DecisionTreeRegressor
 
-warnings.filterwarnings("ignore")
+warnings.filterwarnings("ignore") #ignore
 sns.set_style("whitegrid")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
