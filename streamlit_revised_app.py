@@ -147,9 +147,10 @@ def train_and_evaluate_models():
     
     ridge_grid.fit(Xtrain, ytrain)
     best_ridge = ridge_grid.best_estimator_
-    y_pred_ridge = best_ridge.predict(Xtest)
+    pred_ridge = best_ridge.predict(Xtest)
+    
     mae, rmse, r2 = evaluate_model(ytest, pred_ridge) #extract formula 
-    cv_rmse = -cross_val_score(best_ridge, Xtrain, ytrain, cv=5, scoring="neg_root_mean_squared_error"    ).mean()
+    cv_rmse = -cross_val_score(best_ridge, Xtrain, ytrain, cv=5, scoring="neg_root_mean_squared_error").mean()
     cv_r2 = cross_val_score(best_ridge, Xtrain, ytrain, cv=5, scoring="r2").mean()
     results.append({
         "Model": "Ridge Regression",
