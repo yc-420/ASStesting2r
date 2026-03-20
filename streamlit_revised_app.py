@@ -163,7 +163,7 @@ def train_and_evaluate_models():
     predictions["Ridge Regression"] = pred_ridge
     best_models["Ridge Regression"] = best_ridge
 
-    
+    #3. model (Decision Tree Regressor)
     dt_grid = GridSearchCV(
         DecisionTreeRegressor(random_state=42),
         {
@@ -179,9 +179,7 @@ def train_and_evaluate_models():
     best_dt = dt_grid.best_estimator_
     pred_dt = best_dt.predict(Xtest)
     mae, rmse, r2 = evaluate_model(ytest, pred_dt)
-    cv_rmse = -cross_val_score(
-        best_dt, Xtrain, ytrain, cv=5, scoring="neg_root_mean_squared_error"
-    ).mean()
+    cv_rmse = -cross_val_score(best_dt, Xtrain, ytrain, cv=5, scoring="neg_root_mean_squared_error").mean()
     cv_r2 = cross_val_score(best_dt, Xtrain, ytrain, cv=5, scoring="r2").mean()
     results.append({
         "Model": "Decision Tree",
@@ -195,10 +193,11 @@ def train_and_evaluate_models():
     predictions["Decision Tree"] = pred_dt
     best_models["Decision Tree"] = best_dt
 
+    #4. model (Random Forest Regressor)
     best_rf = None
     if os.path.exists(RF_MODEL_PATH):
         try:
-            best_rf = joblib.load(RF_MODEL_PATH)
+            best_rf = joblib.load(RF_MODEL_PATH) #Find this model from joblib I saved from model_training.ipyb
             best_rf.fit(Xtrain, ytrain)
             rf_best_params = str({
                 k: best_rf.get_params()[k]
@@ -227,9 +226,7 @@ def train_and_evaluate_models():
 
     pred_rf = best_rf.predict(Xtest)
     mae, rmse, r2 = evaluate_model(ytest, pred_rf)
-    cv_rmse = -cross_val_score(
-        best_rf, Xtrain, ytrain, cv=5, scoring="neg_root_mean_squared_error"
-    ).mean()
+    cv_rmse = -cross_val_score(best_rf, Xtrain, ytrain, cv=5, scoring="neg_root_mean_squared_error").mean()
     cv_r2 = cross_val_score(best_rf, Xtrain, ytrain, cv=5, scoring="r2").mean()
     results.append({
         "Model": "Random Forest",
@@ -259,9 +256,7 @@ def train_and_evaluate_models():
 
 def prepare_prediction_input(input_df: pd.DataFrame, feature_cols: List[str]) -> pd.DataFrame:
     df = input_df.copy()
-    df["department"] = (
-        df["department"].astype(str).str.strip().str.lower().replace({"sweing": "sewing"})
-    )
+    df["department"] = (df["department"].astype(str).str.strip().str.lower().replace({"sweing": "sewing"}))
     df["quarter"] = pd.Categorical(df["quarter"], categories=QUARTER_CATS)
     df["department"] = pd.Categorical(df["department"], categories=DEPARTMENT_CATS)
     df["day"] = pd.Categorical(df["day"], categories=DAY_CATS)
@@ -278,7 +273,7 @@ def prepare_prediction_input(input_df: pd.DataFrame, feature_cols: List[str]) ->
 
 
 def get_prediction_status(gap: float):
-    if gap >= 0.05:
+    if gap >= 0.05: #Tolerance for error
         return "Likely to exceed target", "success"
     elif gap >= 0:
         return "Likely to meet target", "success"
@@ -295,6 +290,7 @@ feature_cols = model_bundle["feature_columns"]
 best_models = model_bundle["best_models"]
 best_model_row = results_df.sort_values("RMSE").iloc[0]
 
+#App design
 st.title("Garment Worker Productivity Dashboard")
 st.caption(
     "BMDS2003 Data Science Project — EDA, model comparison, single prediction, and batch prediction"
