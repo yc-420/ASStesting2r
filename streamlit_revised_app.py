@@ -29,7 +29,8 @@ DAY_CATS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Saturday", "Sunday"]
 st.set_page_config(page_title="Garment Worker Productivity Dashboard", layout="wide") #set configuration
 
 
-def evaluate_model(y_true, y_pred):
+#Formula save here, no need to repeat writing the formula 
+def evaluate_model(y_true, y_pred): 
     mae = mean_absolute_error(y_true, y_pred) #Formula: (actual-prediction)
     rmse = np.sqrt(mean_squared_error(y_true, y_pred)) #square. Put punishment 
     r2 = r2_score(y_true, y_pred) #variable affection
@@ -48,10 +49,10 @@ def load_raw_data():
         .astype(str) #String
         .str.strip() #Remove Space 
         .str.lower() #lowercase 
-        .replace({"sweing": "sewing"})
-    )
-    df["date"] = pd.to_datetime(df["date"], errors="coerce") 
-    df["day"] = df["date"].dt.day_name() ##Date connect with day
+        .replace({"sweing": "sewing"}))
+    
+    df["date"] = pd.to_datetime(df["date"], errors="coerce") #Datetime variable, invalid date values are converted to missing values
+    df["day"] = df["date"].dt.day_name() #Date connect with day
     df["wip"] = df["wip"].fillna(0) #Missing WIP values are filled with 0, assuming no work in progress was recorded.
 
     return df, original_missing_wip
@@ -59,20 +60,18 @@ def load_raw_data():
 
 @st.cache_data
 def build_model_dataframe():
-    df, _ = load_raw_data()
+    df, _ = load_raw_data() #df, not use original_missing_wip
     model_df = df.copy() #A copy of the original dataset is created to avoid modifying the raw data directly
 
     model_df["quarter"] = pd.Categorical(model_df["quarter"], categories=QUARTER_CATS)
     model_df["department"] = pd.Categorical(model_df["department"], categories=DEPARTMENT_CATS)
     model_df["day"] = pd.Categorical(model_df["day"], categories=DAY_CATS)
 
-    model_df = pd.get_dummies(
-        model_df,
-        columns=["quarter", "department", "day"],
+    model_df = pd.get_dummies(model_df, columns=["quarter", "department", "day"], 
         drop_first=True,
     )
     model_df = model_df.drop(columns=["date"])
-    model_df.columns = model_df.columns.str.strip()
+    model_df.columns = model_df.columns.str.strip() #Make sure no space
     return model_df
 
 
@@ -96,12 +95,13 @@ def get_column_details():
         ["day", "Day name derived from date", "derived categorical"],
     ], columns=["Feature", "Description", "Type"])
 
-
-@st.cache_resource
+#baseline (dummyregressor)
+#1. model (Linear Regression)
+@st.cache_resource #avoid reruns
 def train_and_evaluate_models():
     model_df = build_model_dataframe()
-    X = model_df.drop("actual_productivity", axis=1)
-    y = model_df["actual_productivity"]
+    X = model_df.drop("actual_productivity", axis=1) #remove target variable from features to prevent data leakage
+    y = model_df["actual_productivity"] 
 
     Xtrain, Xtest, ytrain, ytest = train_test_split(
         X, y, test_size=0.2, random_state=42
@@ -112,19 +112,21 @@ def train_and_evaluate_models():
     best_models = {}
 
     models = {
-        "Baseline": DummyRegressor(strategy="mean"),
+        "Baseline": DummyRegressor(strategy="mean"), #Build baseline mode (predict mean)
         "Linear Regression": LinearRegression(),
     }
 
+    # cross-validation
     for model_name, model in models.items():
-        model.fit(Xtrain, ytrain)
+        model.fit(Xtrain, ytrain) #Training through y and x
         pred = model.predict(Xtest)
         mae, rmse, r2 = evaluate_model(ytest, pred)
         cv_rmse = -cross_val_score(
             model, Xtrain, ytrain, cv=5, scoring="neg_root_mean_squared_error"
-        ).mean()
+        ).mean() 
         cv_r2 = cross_val_score(model, Xtrain, ytrain, cv=5, scoring="r2").mean()
 
+        #save 
         results.append({
             "Model": model_name,
             "MAE": mae,
@@ -136,21 +138,18 @@ def train_and_evaluate_models():
         })
         predictions[model_name] = pred
         best_models[model_name] = model
-
+        
+    #Find best parameter
+    #2. Ridge Regression
     ridge_grid = GridSearchCV(
         Ridge(),
-        {"alpha": [0.01, 0.1, 1, 10, 100]},
-        cv=5,
-        scoring="r2",
-        n_jobs=-1,
-    )
+        {"alpha": [0.01, 0.1, 1, 10, 100]}, cv=5, scoring="r2", n_jobs=-1,)
+    
     ridge_grid.fit(Xtrain, ytrain)
     best_ridge = ridge_grid.best_estimator_
-    pred_ridge = best_ridge.predict(Xtest)
-    mae, rmse, r2 = evaluate_model(ytest, pred_ridge)
-    cv_rmse = -cross_val_score(
-        best_ridge, Xtrain, ytrain, cv=5, scoring="neg_root_mean_squared_error"
-    ).mean()
+    y_pred_ridge = best_ridge.predict(Xtest)
+    mae, rmse, r2 = evaluate_model(ytest, pred_ridge) #extract formula 
+    cv_rmse = -cross_val_score(best_ridge, Xtrain, ytrain, cv=5, scoring="neg_root_mean_squared_error"    ).mean()
     cv_r2 = cross_val_score(best_ridge, Xtrain, ytrain, cv=5, scoring="r2").mean()
     results.append({
         "Model": "Ridge Regression",
@@ -164,6 +163,7 @@ def train_and_evaluate_models():
     predictions["Ridge Regression"] = pred_ridge
     best_models["Ridge Regression"] = best_ridge
 
+    
     dt_grid = GridSearchCV(
         DecisionTreeRegressor(random_state=42),
         {
@@ -388,21 +388,22 @@ elif menu == "Data Exploration":
     if filtered_df.empty:
         st.warning("No data available for the selected filters.")
         st.stop()
-    
-    
-    m1, m2, m3, m4 = st.columns(4)
-    
-    Q1 = filtered_df["actual_productivity"].quantile(0.25)
-    Q3 = filtered_df["actual_productivity"].quantile(0.75)
-    IQR = Q3 - Q1
-    pos = np.where(
-    (filtered_df["actual_productivity"] < (Q1 - 1.5 * IQR)) |
-    (filtered_df["actual_productivity"] > (Q3 + 1.5 * IQR))
-    )
-    m1.metric("Filtered Records", len(filtered_df))
-    m2.metric("Average Productivity", f"{filtered_df['actual_productivity'].mean():.3f}")
-    m3.metric("Average Target Productivity", f"{filtered_df['targeted_productivity'].mean():.3f}")
-    m4.metric("Number of Outliers", len(pos[0]))
+        
+        m1, m2, m3, m4 = st.columns(4)
+        
+        Q1 = filtered_df["actual_productivity"].quantile(0.25)
+        Q3 = filtered_df["actual_productivity"].quantile(0.75)
+        IQR = Q3 - Q1
+        pos = np.where(
+        (filtered_df["actual_productivity"] < (Q1 - 1.5 * IQR)) |
+        (filtered_df["actual_productivity"] > (Q3 + 1.5 * IQR))
+        )
+        
+        m1.metric("Filtered Records", len(filtered_df))
+        m2.metric("Average Productivity", f"{filtered_df['actual_productivity'].mean():.3f}")
+        m3.metric("Average Target Productivity", f"{filtered_df['targeted_productivity'].mean():.3f}")
+        m4.metric("Number of Outliers", len(pos[0]))
+
 
     st.subheader("1. Distribution of the Target Variable")
     c1, c2 = st.columns(2)
